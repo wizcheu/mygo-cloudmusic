@@ -13,6 +13,14 @@ import (
 	"netease-music-mygo/internal/netease"
 )
 
+// Where the player asks NetEase for a track's stream, cover and lyrics: a
+// test replaces them to keep the network out.
+var (
+	songURL     = netease.SongURL
+	fetchCover  = netease.Fetch
+	fetchLyrics = netease.Lyrics
+)
+
 type RepeatMode int
 
 const (
@@ -392,7 +400,7 @@ func (p *Player) Next() {
 		}
 		at = 0
 	}
-	p.load(at)
+	p.loadNext(at)
 }
 
 // Prev plays the track before this one, however far this one has played:
@@ -428,7 +436,7 @@ func (p *Player) TogglePlay() {
 			p.playing = !p.playing
 			p.sync()
 		case len(p.order) > 0:
-			p.loadSkipping(max(p.at, 0), 0, true, p.pending)
+			p.loadSkipping(max(p.at, 0), 0, true, p.pending, false)
 		}
 		return
 	}
@@ -569,14 +577,22 @@ func (p *Player) stop() {
 	p.fade.attach(nil, 1)
 }
 
-// load plays the track at order[at], skipping those that cannot play.
+// load plays the track at order[at], whatever it is: one that cannot play
+// stays, and says why, rather than going on to another, which took a song
+// picked from a list away as soon as it was clicked.
 func (p *Player) load(at int) {
-	p.loadSkipping(at, 0, true, 0)
+	p.loadSkipping(at, 0, true, 0, false)
+}
+
+// loadNext plays the track at order[at], or else the ones after it, as
+// far as any plays.
+func (p *Player) loadNext(at int) {
+	p.loadSkipping(at, 0, true, 0, true)
 }
 
 // loadSkipping loads the track at order[at], to play or not, from from,
-// skipping those that cannot play: skipped of them so far.
-func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
+// skipping those that cannot play, if skip: skipped of them so far.
+func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration, skip bool) {
 	p.stop()
 	p.gen++
 	gen := p.gen
@@ -591,7 +607,7 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 	p.refill()
 
 	go func() {
-		cover, err := netease.Fetch(netease.Sized(t.Album.PicURL, 600))
+		cover, err := fetchCover(netease.Sized(t.Album.PicURL, 600))
 		if err == nil {
 			p.post(func() {
 				if gen == p.gen {
@@ -602,7 +618,7 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 	}()
 
 	go func() {
-		lrc, trans, yrc, err := netease.Lyrics(t.ID)
+		lrc, trans, yrc, err := fetchLyrics(t.ID)
 		var lines []lyrics.Line
 		if err == nil {
 			lines = lyrics.Build(lrc, trans, yrc)
@@ -634,16 +650,21 @@ func (p *Player) loadSkipping(at, skipped int, play bool, from time.Duration) {
 				case err != netease.ErrUnavailable:
 				case t.ProgramID != 0:
 					p.err = "这期节目需要购买才能收听"
+				case t.TakenDown():
+					p.err = "这首歌已下架"
+				case t.PaidAlbum():
+					p.err = "这首歌需要购买专辑才能播放"
 				default:
 					p.err = "这首歌需要 VIP 才能播放"
 				}
-				// Skip what cannot play, unless nothing in the queue can.
-				if skipped+1 < len(p.order) {
+				// Skip what cannot play, unless nothing in the queue can, or
+				// the listener picked this song.
+				if skip && skipped+1 < len(p.order) {
 					next := at + 1
 					if next >= len(p.order) {
 						next = 0
 					}
-					p.loadSkipping(next, skipped+1, p.playing, 0)
+					p.loadSkipping(next, skipped+1, p.playing, 0, true)
 				} else {
 					p.playing = false
 					p.sync()
@@ -686,7 +707,7 @@ func (p *Player) open(t netease.Track, level string) (*netease.Stream, stream, e
 	dl, info, ok := p.Cache.lookup(t.ID, level)
 	if !ok {
 		var err error
-		info, err = netease.SongURL(t.ID, level)
+		info, err = songURL(t.ID, level)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -743,5 +764,5 @@ func (p *Player) Restore(s Session) {
 	}
 	p.queue, p.order = s.Queue, s.Order
 	p.shuffle, p.repeat = s.Shuffle, s.Repeat%3
-	p.loadSkipping(s.At, 0, false, time.Duration(s.Position)*time.Millisecond)
+	p.loadSkipping(s.At, 0, false, time.Duration(s.Position)*time.Millisecond, true)
 }

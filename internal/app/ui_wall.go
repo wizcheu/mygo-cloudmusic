@@ -104,7 +104,7 @@ func (a *app) wallPane(c *ui.Context, tr *netease.Track, art *artwork, accent ui
 	// controls' blur, which only covers going by pass under.
 	const frost, foot = 72, 112
 	wallY := top + songH - frost/2
-	a.wall(c, wallY, w, h-wallY, frost, foot, frost)
+	a.wall(c, accent, wallY, w, h-wallY, frost, foot, frost)
 	// Up into the frost, covers blur more and more and fade into the
 	// backdrop, painted again over them, opaque by the frost's top: there
 	// it shows what shows above it, so that no edge does.
@@ -122,7 +122,7 @@ func (a *app) wallPane(c *ui.Context, tr *netease.Track, art *artwork, accent ui
 		Draw(func(p *ui.Painter, r ui.Rect) {
 			a.backdropOver(p, ui.Rect{W: w, H: h}, r, func(t float32) float32 { return 0.7 * smoothstep(0, 0.9, t) })
 		})
-	a.wallSong(c, tr, art, top, songH)
+	a.wallSong(c, tr, art, accent, top, songH)
 	a.wallBar(c, accent)
 	reveal(npTabsRow(c, w), pointerIn).Children(func() { a.paneTabs(c) })
 }
@@ -130,7 +130,7 @@ func (a *app) wallPane(c *ui.Context, tr *netease.Track, art *artwork, accent ui
 // wallSong is the song playing, over the wall: its cover, which breathes
 // as Now Playing's does, its name, and the line of its lyrics sung, with
 // the next.
-func (a *app) wallSong(c *ui.Context, tr *netease.Track, art *artwork, top, h float32) {
+func (a *app) wallSong(c *ui.Context, tr *netease.Track, art *artwork, accent ui.Color, top, h float32) {
 	pl := a.pl
 	ui.Row(c.Key("wall-song")).Absolute().Top(top).Left(0).Right(0).Height(h).Padding(0, 72).Gap(36).
 		Justify(ui.Center).AlignItems(ui.Center).Children(func() {
@@ -154,6 +154,7 @@ func (a *app) wallSong(c *ui.Context, tr *netease.Track, art *artwork, top, h fl
 			}
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, tr.Name).FontSize(26).FontWeight(800).LetterSpacing(-0.4).SingleLine().Shrink(1).MinWidth(0)
+				trackTag(c, tr, 10, accent, white.Alpha(0.5))
 				a.likeButton(c.Key("like"), tr, 20, white.Alpha(0.7))
 				a.songMenu(c.Key("more"), tr, 20, white.Alpha(0.7)).Margin(0, -8, 0, 0)
 			})
@@ -183,7 +184,7 @@ func (a *app) wallSong(c *ui.Context, tr *netease.Track, art *artwork, top, h fl
 // wall lays the queue's covers out in an area from y down to the
 // window's foot, w×h, its first row top down from the area's top and its
 // last foot above its foot, frost the height of the frost over its top.
-func (a *app) wall(c *ui.Context, y, w, h, top, foot, frost float32) {
+func (a *app) wall(c *ui.Context, accent ui.Color, y, w, h, top, foot, frost float32) {
 	pl, ws := a.pl, &a.wallState
 	queue := pl.Queue()
 	l := layWall(len(queue), w, h, top, foot)
@@ -292,7 +293,7 @@ func (a *app) wall(c *ui.Context, y, w, h, top, foot, frost float32) {
 						case i == hover:
 							lift = 1.04
 						}
-						a.wallTile(c, &queue[i], i, float32(col)*wallPitch, i == playing, i == hover, lift)
+						a.wallTile(c, &queue[i], i, float32(col)*wallPitch, i == playing, i == hover, accent, lift)
 					}
 				})
 			}
@@ -328,7 +329,7 @@ func rowSwayTarget(r int, now time.Time) (float32, time.Duration) {
 // wallTile is the cover of the i-th song of the queue, tr, x along its
 // row, scaled to lift: the song playing stands out,
 // ringed, and the one under the pointer says what it is.
-func (a *app) wallTile(c *ui.Context, tr *netease.Track, i int, x float32, playing, hovered bool, lift float32) {
+func (a *app) wallTile(c *ui.Context, tr *netease.Track, i int, x float32, playing, hovered bool, accent ui.Color, lift float32) {
 	tile := ui.Box(c.Key(i)).Absolute().Left(x).Top(0).Size(wallTile, wallTile).Radius(12).
 		Label(tr.Name).ContextMenu(a.songItems(tr, 0))
 	tile.AnimatePose(ui.Pose{Scale: lift}, ui.Animation{Spring: ui.SpringOptions{Duration: 400 * time.Millisecond, Bounce: 0.2}})
@@ -347,7 +348,10 @@ func (a *app) wallTile(c *ui.Context, tr *netease.Track, i int, x float32, playi
 				Justify(ui.End).PassThrough().TextColor(white).
 				Gradient(ui.RGBA(0, 0, 0, 0.78), ui.Transparent, 0).
 				Children(func() {
-					ui.Text(c, tr.Name).FontSize(12).FontWeight(700).SingleLine()
+					ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, tr.Name).FontSize(12).FontWeight(700).SingleLine().Shrink(1).MinWidth(0)
+						trackTag(c, tr, 7.5, accent, white.Alpha(0.5))
+					})
 					if names := tr.ArtistNames(); names != "" {
 						ui.Text(c, names).FontSize(10.5).TextColor(white.Alpha(0.7)).SingleLine()
 					}

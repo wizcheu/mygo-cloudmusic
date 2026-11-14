@@ -26,6 +26,25 @@ type palette struct {
 	cardShade ui.Color
 }
 
+// trackTag marks what a track needs to play in full: a VIP subscription, a
+// paid album, or nothing because NetEase took it down. Songs anyone may
+// play wear nothing.
+func trackTag(c *ui.Context, tr *netease.Track, size float32, accent, faint ui.Color) {
+	label, color := "", accent
+	switch {
+	case tr.TakenDown():
+		label, color = "已下架", faint
+	case tr.PaidAlbum():
+		label = "付费"
+	case tr.VIP():
+		label = "VIP"
+	}
+	if label == "" {
+		return
+	}
+	ui.Text(c, label).FontSize(size).FontWeight(800).TextColor(color).Padding(0, 4).Radius(3).Border(1, color.Alpha(0.6))
+}
+
 func paletteFor(t *ui.Theme) palette {
 	if t.Dark {
 		return palette{

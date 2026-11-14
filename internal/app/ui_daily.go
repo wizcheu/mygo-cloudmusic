@@ -359,6 +359,9 @@ func (a *app) dailyPicks(c *ui.Context, songs []netease.Track, ours bool) {
 				bg = white.Alpha(0.1)
 			}
 			row.Background(row.AnimateColor("bg", bg, ui.Animation{Duration: 120 * time.Millisecond}))
+			if !tr.Playable() {
+				row.Opacity(0.42)
+			}
 			current := ours && cur != nil && cur.ID == tr.ID
 			row.Children(func() {
 				ui.Box(c).Width(18).Center().Children(func() {
@@ -369,11 +372,14 @@ func (a *app) dailyPicks(c *ui.Context, songs []netease.Track, ours bool) {
 					}
 				})
 				ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, tr.Name).FontSize(13).FontWeight(600).MaxLines(1)
+					ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, tr.Name).FontSize(13).FontWeight(600).MaxLines(1).Shrink(1).MinWidth(0)
+						trackTag(c, tr, 7.5, white, white.Alpha(0.5))
+					})
 					a.artistLinks(c, tr, white.Alpha(0.6), white).FontSize(11.5).MaxLines(1)
 				})
 			})
-			if row.Clicked() {
+			if row.Clicked() && tr.Playable() {
 				a.pl.PlayQueue(songs, i)
 			}
 		}

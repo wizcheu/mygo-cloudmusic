@@ -55,9 +55,10 @@ type Track struct {
 // Privilege is what NetEase lets the listener signed in, or nobody, do
 // with a track.
 type Privilege struct {
-	ID int64 `json:"id"`
-	St int   `json:"st"` // below 0: taken down
-	Pl int   `json:"pl"` // the best bit rate the listener may play; 0 for none
+	ID  int64 `json:"id"`
+	St  int   `json:"st"`  // below 0: taken down
+	Pl  int   `json:"pl"`  // the best bit rate the listener may play; 0 for none
+	Fee int   `json:"fee"` // as the song's own, where that is missing
 }
 
 // withPrivileges gives tracks their privileges, matched by ID.
@@ -95,6 +96,33 @@ func (t *Track) Playable() bool {
 		return t.Privilege.St >= 0 && t.Privilege.Pl > 0
 	}
 	return t.Fee != 1 && t.Fee != 4
+}
+
+// VIP reports whether the track is a VIP song: fee 1, or 8, which plays at
+// low quality for anyone and in full for subscribers.
+func (t *Track) VIP() bool {
+	fee := t.fee()
+	return fee == 1 || fee == 8
+}
+
+// PaidAlbum reports whether the track belongs to an album sold on its own.
+func (t *Track) PaidAlbum() bool { return t.fee() == 4 }
+
+// TakenDown reports whether NetEase took the track down, as the song's
+// details say once they are asked for: a playlist's own privileges may
+// mark VIP songs so for subscribers.
+func (t *Track) TakenDown() bool { return t.Privilege != nil && t.Privilege.St < 0 }
+
+// fee is the track's fee, or else its privilege's, where the song's own is
+// missing.
+func (t *Track) fee() int {
+	if t.Fee != 0 {
+		return t.Fee
+	}
+	if t.Privilege != nil {
+		return t.Privilege.Fee
+	}
+	return 0
 }
 
 func (t *Track) Length() time.Duration { return time.Duration(t.Duration) * time.Millisecond }
@@ -408,9 +436,23 @@ var Levels = []string{"standard", "higher", "exhigh", "lossless", "hires"}
 // Lossless reports whether level streams FLAC.
 func Lossless(level string) bool { return level == "lossless" || level == "hires" }
 
+// streamBR is the bitrate each level asks for through the older stream
+// endpoint.
+var streamBR = map[string]int{
+	"standard": 128000,
+	"higher":   192000,
+	"exhigh":   320000,
+	"lossless": 999000,
+	"hires":    1999000,
+}
+
 // SongURL returns where to stream a track, MP3 or FLAC, at level (one of
 // Levels) or the best below it the listener may play. It goes through
 // the eapi, which carries the session, so VIP songs play for subscribers.
+//
+// It asks the older of the two stream endpoints: the newer one, url/v1,
+// answers -460, 检测到您的网络环境存在风险, at random, which made a VIP
+// song picked from a list look unplayable to a subscriber.
 func SongURL(id int64, level string) (*Stream, error) {
 	var res struct {
 		Code int `json:"code"`
@@ -422,12 +464,19 @@ func SongURL(id int64, level string) (*Stream, error) {
 		} `json:"data"`
 	}
 	encode := "mp3"
+	br := streamBR["exhigh"]
+	if b, ok := streamBR[level]; ok {
+		br = b
+	}
 	if Lossless(level) {
 		encode = "flac"
 	}
-	data := map[string]any{"ids": fmt.Sprintf("[%d]", id), "level": level, "encodeType": encode}
-	if err := eapiPost("/api/song/enhance/player/url/v1", data, &res); err != nil {
+	data := map[string]any{"ids": fmt.Sprintf("[%d]", id), "br": br, "encodeType": encode}
+	if err := eapiPost("/api/song/enhance/player/url", data, &res); err != nil {
 		return nil, err
+	}
+	if res.Code != 200 {
+		return nil, fmt.Errorf("netease: stream url: code %d", res.Code)
 	}
 	if len(res.Data) == 0 || res.Data[0].URL == "" {
 		return nil, ErrUnavailable

@@ -125,6 +125,11 @@ func TestVIPSongPlayableLive(t *testing.T) {
 	if !songs[0].Playable() {
 		t.Fatalf("Stan not playable: %+v", songs[0].Privilege)
 	}
+	// And its stream comes back, not -460 from the newer endpoint.
+	st, err := SongURL(17572422, "exhigh")
+	if err != nil || st.URL == "" || st.Size == 0 || st.Type != "mp3" {
+		t.Fatalf("stream %+v, %v", st, err)
+	}
 }
 
 func TestArtistDetailLive(t *testing.T) {

@@ -387,7 +387,10 @@ func (a *app) playerBar(c *ui.Context) {
 					}
 				})
 				ui.Column(c).Shrink(1).MinWidth(0).Gap(3).Children(func() {
-					ui.Text(c, tr.Name).FontSize(13.5).FontWeight(600).SingleLine()
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, tr.Name).FontSize(13.5).FontWeight(600).SingleLine().Shrink(1).MinWidth(0)
+						trackTag(c, tr, 8.5, p.accent, p.faint)
+					})
 					// What it is waiting on shows in place of the artists.
 					var sub string
 					color := p.muted

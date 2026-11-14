@@ -1,6 +1,7 @@
 package player
 
 import (
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -17,6 +18,41 @@ func TestPlayEmptyQueue(t *testing.T) {
 	p.PlayQueue(nil, 0) // an empty playlist's play button
 	if p.Current() != nil {
 		t.Error("playing from an empty queue")
+	}
+}
+
+// A song picked from a list that cannot play stays, saying why, rather
+// than going on to the songs after it: clicking a VIP song went at once,
+// and every VIP song after it in turn.
+func TestPickedUnplayableStays(t *testing.T) {
+	song, cover, lyric := songURL, fetchCover, fetchLyrics
+	defer func() { songURL, fetchCover, fetchLyrics = song, cover, lyric }()
+	fail := errors.New("no network in tests")
+	songURL = func(int64, string) (*netease.Stream, error) { return nil, netease.ErrUnavailable }
+	fetchCover = func(string) ([]byte, error) { return nil, fail }
+	fetchLyrics = func(int64) (string, string, string, error) { return "", "", "", fail }
+
+	ch := make(chan func(), 8)
+	p := New(func(fn func()) { ch <- fn })
+	tracks := []netease.Track{{ID: 1, Name: "一", Duration: 60000}, {ID: 2, Name: "二", Duration: 60000}}
+	p.PlayQueue(tracks, 0)
+	timeout := time.After(2 * time.Second)
+	for p.Loading() || p.Err() == "" {
+		select {
+		case fn := <-ch:
+			fn()
+		case <-timeout:
+			t.Fatal("the song neither played nor said why")
+		}
+	}
+	if p.Current() == nil || p.Current().ID != 1 {
+		t.Errorf("went on to %v", p.Current())
+	}
+	if p.Playing() {
+		t.Error("playing a song that cannot")
+	}
+	if p.Err() != "这首歌需要 VIP 才能播放" {
+		t.Errorf("error %q", p.Err())
 	}
 }
 
